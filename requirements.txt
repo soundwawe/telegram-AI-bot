@@ -1,2 +1,3 @@
 pytelegrambotapi
 Groq
+duckduckgo-search
