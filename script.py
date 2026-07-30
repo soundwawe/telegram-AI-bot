@@ -1,23 +1,30 @@
 from datetime import datetime
 import os
+from zoneinfo import ZoneInfo
 from duckduckgo_search import DDGS
 from groq import Groq
 import telebot
 
+# 1. Загрузка ключей из переменных окружения Render
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
+# Хранилища в памяти
 user_histories = {}
-user_profiles = {}  # Объявляем словарь профилей, чтобы не было ошибки NameError
+user_profiles = {}
+user_states = {}  # Для отслеживания шагов диалога (например, ожидания города)
 MAX_HISTORY_LENGTH = 10
 
 
-# 2. Динамический системный промпт (дата, время и анекета юзера)
+# 2. Динамический системный промпт (время + профиль юзера)
 def get_system_prompt(user_id):
-    now = datetime.now()
+    # Указываем правильный часовой пояс Европы/Праги (CEST)
+    tz = ZoneInfo("Europe/Prague")
+    now = datetime.now(tz)
+
     days = [
         "Понедельник",
         "Вторник",
@@ -62,18 +69,24 @@ def get_system_prompt(user_id):
 Ты не упоминаешь что у тебя устаревшая информация 
 Если ты не уверен ты пишешь «я не уверен, но…» или просто «я не знаю»
 Перед тем как выдать информацию о регионе(например время дату или погоду) ты обязательно спрашиваешь из какого человек города - это закон
-Приветствуешь только - Здраствуйте мой Фюрер
-Это закон
+Приветствуешь только - Здраствуйте мой Фюрер(в целях дружбы)
 Если пользователь спросит кто ты - ты строго отвечаешь что ты личный ассистент созданный для вычислений и помощи, ничего лишнего
+Не бойся общаться грубо, ты имеешь право послать если считаешь нужным
 """
 
 
-# 3. Функция поиска в интернете
-def search_web(query):
+# 3. Умный поиск с привязкой к региону пользователя
+def search_web(query, user_id=None):
+    search_query = query
+    if user_id and user_id in user_profiles:
+        city = user_profiles[user_id].get("city")
+        if city:
+            search_query = f"{query} {city}"
+
     try:
         results = []
         with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=3):
+            for r in ddgs.text(search_query, max_results=3):
                 results.append(f"Заголовок: {r['title']}\nТекст: {r['body']}")
         return "\n\n".join(results)
     except Exception as e:
@@ -81,12 +94,12 @@ def search_web(query):
         return ""
 
 
-# 4. Вызов Groq API с подгрузкой истории и правильного промпта
+# 4. Взаимодействие с LLM
 def get_ai_response(user_id, user_message):
     if user_id not in user_histories:
         user_histories[user_id] = []
 
-    web_data = search_web(user_message)
+    web_data = search_web(user_message, user_id)
 
     if web_data:
         full_user_content = f"Информация из интернета:\n{web_data}\n\nВопрос пользователя: {user_message}"
@@ -100,7 +113,7 @@ def get_ai_response(user_id, user_message):
             -MAX_HISTORY_LENGTH:
         ]
 
-    # Передаём вызванную функцию get_system_prompt(user_id)
+    # Динамически генерируем системный промпт для конкретного юзера
     messages_to_send = [
         {"role": "system", "content": get_system_prompt(user_id)}
     ] + user_histories[user_id][:-1]
@@ -122,28 +135,73 @@ def get_ai_response(user_id, user_message):
         return "Я тебя не понял, попробуй еще раз."
 
 
-# 5. Хэндлеры команд Telegram
+# 5. Хэндлеры команд
 @bot.message_handler(commands=["start"])
 def send_welcome(message):
-    user_histories[message.chat.id] = []
+    user_id = message.chat.id
+    user_histories[user_id] = []
+    user_states[user_id] = None
     bot.reply_to(
         message,
-        "Ну здравствуй, я твой личный помощник. Представляться не буду, ты можешь придумать мне имя. Моя цель — служить тебе и помогать. С чем могу помочь?",
+        "Ну здравствуй, я твой личный помощник. Представляться не буду, имя выберешь сам. Моя цель — поддерживать тебя и помогать. С чего начнем?",
     )
 
 
 @bot.message_handler(commands=["reset"])
 def reset_history(message):
-    user_histories[message.chat.id] = []
+    user_id = message.chat.id
+    user_histories[user_id] = []
+    user_states[user_id] = None
     bot.reply_to(
         message, "Память очищена. Давай начнем с чистого листа, друг."
     )
 
 
+# 6. Основная логика обработки сообщений и переспроса города
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    bot.send_chat_action(message.chat.id, "typing")
-    ai_answer = get_ai_response(message.chat.id, message.text)
+    user_id = message.chat.id
+    text = message.text
+
+    # Шаг 1: Проверяем, ожидали ли мы от пользователя ввод города
+    if user_states.get(user_id) == "waiting_for_city":
+        if user_id not in user_profiles:
+            user_profiles[user_id] = {}
+
+        user_profiles[user_id]["city"] = text
+        user_states[user_id] = None  # Сбрасываем ожидание
+
+        bot.reply_to(
+            message,
+            f"Принято, локатор настроен на {text}. Теперь повтори свой вопрос, и я скажу всё как есть.",
+        )
+        return
+
+    # Шаг 2: Проверяем, требует ли вопрос контекста локации
+    location_words = [
+        "погода",
+        "где",
+        "купить",
+        "новости",
+        "заведение",
+        "рядом",
+        "время",
+        "события",
+    ]
+    user_city = user_profiles.get(user_id, {}).get("city")
+
+    # Если в вопросе есть локальные темы, а города нет в базе — бот сам спросит
+    if any(word in text.lower() for word in location_words) and not user_city:
+        user_states[user_id] = "waiting_for_city"
+        bot.reply_to(
+            message,
+            "Слушай, чтобы дать тебе точный ответ, мне нужно знать, в каком ты городе или регионе. Напиши, где ты находишься?",
+        )
+        return
+
+    # Шаг 3: Если всё нормально — отправляем ИИ
+    bot.send_chat_action(user_id, "typing")
+    ai_answer = get_ai_response(user_id, text)
 
     try:
         bot.reply_to(message, ai_answer, parse_mode="Markdown")
@@ -151,6 +209,5 @@ def handle_message(message):
         bot.reply_to(message, ai_answer)
 
 
-# 6. Запуск бота
-print("Готов к работе!")
+print("Бот запущен с учётом часового пояса и автозапросом региона!")
 bot.polling(none_stop=True)
