@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 from groq import Groq
-from duckduckgo_search import DDGS
+import yt_dlp
 
 # ==========================================
 # 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ПЕРЕМЕННЫЕ
@@ -14,7 +14,6 @@ from duckduckgo_search import DDGS
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-# ID твоего закрытого канала-хранилища (например: -1001234567890)
 STORAGE_CHAT_ID = os.environ.get("STORAGE_CHAT_ID")
 
 if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "YOUR_TELEGRAM_TOKEN":
@@ -154,34 +153,25 @@ user_states = {}
 
 
 # ==========================================
-# 2. МЕХАНИЗМ СИНХРОНИЗАЦИИ С ТГ-КАНАЛОМ
+# 2. МЕХАНИЗМ БЭКАПА И ХРАНИЛИЩА (JSON)
 # ==========================================
 
 def restore_db_from_telegram():
-    """Скачивает последнюю резервную копию profiles.json из ТГ-канала при старте"""
     if not STORAGE_CHAT_ID:
-        print("⚠️ STORAGE_CHAT_ID не задан. Бот работает с локальным JSON (данные могут сбрасываться).")
         return
-
     try:
-        # Находим последнее сообщение в канале с документом
-        updates = bot.get_updates()
-        # Ищем через историю канала (самый простой способ - взять из последних сообщений)
-        # Так как get_updates ловит только новые события, выкачиваем через отправку тестового вызова
-        # Лучший подход: берем последнюю публикацию в канале
         chat = bot.get_chat(STORAGE_CHAT_ID)
         if chat.pinned_message and chat.pinned_message.document:
             file_info = bot.get_file(chat.pinned_message.document.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
             with open(PROFILES_FILE, 'wb') as new_file:
                 new_file.write(downloaded_file)
-            print("✅ База данных успешно восстановлена из закрепленного сообщения Telegram!")
+            print("✅ База данных успешно восстановлена из Telegram!")
     except Exception as e:
-        print(f"ℹ️ Не удалось автоматически восстановить базу из канала: {e}")
+        print(f"ℹ️ Не удалось загрузить бэкап из канала: {e}")
 
 
 def backup_db_to_telegram():
-    """Отправляет файл profiles.json в ТГ-канал и закрепляет его"""
     if not STORAGE_CHAT_ID:
         return
     try:
@@ -192,7 +182,6 @@ def backup_db_to_telegram():
                     doc,
                     caption=f"📦 Резервная копия базы от {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
-                # Закрепляем последнее актуальное состояние
                 try:
                     bot.pin_chat_message(STORAGE_CHAT_ID, msg.message_id)
                 except Exception:
@@ -200,10 +189,6 @@ def backup_db_to_telegram():
     except Exception as e:
         print(f"❌ Ошибка бэкапа в Telegram: {e}")
 
-
-# ==========================================
-# 3. РАБОТА С ХРАНИЛИЩЕМ (JSON)
-# ==========================================
 
 restore_db_from_telegram()
 
@@ -222,7 +207,6 @@ def load_json(path, default):
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-    # Если сохраняем профили — сразу выгружаем в Telegram!
     if path == PROFILES_FILE:
         threading.Thread(target=backup_db_to_telegram, daemon=True).start()
 
@@ -232,6 +216,24 @@ valid_keys = load_json(KEYS_FILE, INITIAL_KEYS)
 
 if not os.path.exists(KEYS_FILE):
     save_json(KEYS_FILE, valid_keys)
+
+
+def ensure_user_profile(user_id, first_name="User"):
+    """Безопасно создает профиль пользователя, предотвращая KeyError"""
+    if user_id not in user_profiles:
+        user_profiles[user_id] = {
+            "name": first_name or "User",
+            "city": "Not set",
+            "lang": "ru",
+            "status": "free",
+            "trial_used": False,
+            "trial_until": None,
+            "reminders_enabled": True,
+            "notes": [],
+            "playlist": [],
+            "events": []
+        }
+        save_json(PROFILES_FILE, user_profiles)
 
 
 def check_access(user_id):
@@ -250,7 +252,7 @@ def check_access(user_id):
 
 
 # ==========================================
-# 4. КНОПКИ И МЕНЮ
+# 3. КНОПКИ И МЕНЮ
 # ==========================================
 
 def get_menu_keyboard(lang):
@@ -297,7 +299,7 @@ def get_settings_keyboard(user_id):
 
 
 # ==========================================
-# 5. СТАРТ И ВЫБОР ЯЗЫКА
+# 4. СТАРТ И ВЫБОР ЯЗЫКА
 # ==========================================
 
 @bot.message_handler(commands=["start"])
@@ -318,23 +320,10 @@ def callback_set_lang(call):
     user_id = call.from_user.id
     lang = call.data.split("_")[1]
 
-    if user_id not in user_profiles:
-        user_profiles[user_id] = {
-            "name": call.from_user.first_name or "User",
-            "city": "Not set",
-            "lang": lang,
-            "status": "free",
-            "trial_used": False,
-            "trial_until": None,
-            "reminders_enabled": True,
-            "notes": [],
-            "playlist": [],
-            "events": []
-        }
-    else:
-        user_profiles[user_id]["lang"] = lang
-
+    ensure_user_profile(user_id, call.from_user.first_name)
+    user_profiles[user_id]["lang"] = lang
     save_json(PROFILES_FILE, user_profiles)
+
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
     if check_access(user_id):
@@ -344,13 +333,14 @@ def callback_set_lang(call):
 
 
 def render_paywall(chat_id, user_id):
-    lang = user_profiles.get(user_id, {}).get("lang", "en")
-    t = TEXTS.get(lang, TEXTS["en"])
+    ensure_user_profile(user_id)
+    lang = user_profiles[user_id].get("lang", "ru")
+    t = TEXTS.get(lang, TEXTS["ru"])
 
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(t["btn_buy"], callback_data="action_buy"))
 
-    if not user_profiles.get(user_id, {}).get("trial_used"):
+    if not user_profiles[user_id].get("trial_used"):
         markup.add(InlineKeyboardButton(t["btn_trial"], callback_data="action_trial"))
 
     markup.add(InlineKeyboardButton(t["btn_key"], callback_data="action_key"))
@@ -358,6 +348,7 @@ def render_paywall(chat_id, user_id):
 
 
 def render_main_menu(chat_id, user_id):
+    ensure_user_profile(user_id)
     profile = user_profiles[user_id]
     lang = profile.get("lang", "en")
     t = TEXTS.get(lang, TEXTS["en"])
@@ -377,15 +368,17 @@ def render_main_menu(chat_id, user_id):
 
 
 # ==========================================
-# 6. ОПЛАТА, КЛЮЧИ И ТРИАЛ
+# 5. ОПЛАТА, КЛЮЧИ И ТРИАЛ
 # ==========================================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("action_"))
 def handle_actions(call):
     user_id = call.from_user.id
+    ensure_user_profile(user_id, call.from_user.first_name)
+
     action = call.data.split("_")[1]
-    lang = user_profiles.get(user_id, {}).get("lang", "en")
-    t = TEXTS.get(lang, TEXTS["en"])
+    lang = user_profiles[user_id].get("lang", "ru")
+    t = TEXTS.get(lang, TEXTS["ru"])
 
     if action == "trial":
         if user_profiles[user_id].get("trial_used"):
@@ -420,9 +413,10 @@ def handle_actions(call):
 @bot.message_handler(commands=["key"])
 def activate_key_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     args = message.text.split(maxsplit=1)
-    lang = user_profiles.get(user_id, {}).get("lang", "en")
-    t = TEXTS.get(lang, TEXTS["en"])
+    lang = user_profiles[user_id].get("lang", "ru")
+    t = TEXTS.get(lang, TEXTS["ru"])
 
     if len(args) < 2:
         bot.reply_to(message, t["enter_key"], parse_mode="Markdown")
@@ -450,6 +444,7 @@ def process_pre_checkout(q):
 @bot.message_handler(content_types=["successful_payment"])
 def process_payment(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     user_profiles[user_id]["status"] = "pro"
     save_json(PROFILES_FILE, user_profiles)
     bot.reply_to(message, "🎉 Payment successful! Lifetime access granted.")
@@ -457,11 +452,12 @@ def process_payment(message):
 
 
 # ==========================================
-# 7. НАВИГАЦИЯ И НАСТРОЙКИ
+# 6. НАВИГАЦИЯ И НАСТРОЙКИ
 # ==========================================
 
 def render_settings_page(chat_id, user_id, message_id=None):
-    prof = user_profiles.get(user_id, {})
+    ensure_user_profile(user_id)
+    prof = user_profiles[user_id]
     lang = prof.get("lang", "en")
 
     msg_text = (
@@ -481,10 +477,11 @@ def render_settings_page(chat_id, user_id, message_id=None):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("set_"))
 def handle_settings_actions(call):
     user_id = call.from_user.id
+    ensure_user_profile(user_id, call.from_user.first_name)
     action = call.data.replace("set_", "")
     chat_id = call.message.chat.id
-    lang = user_profiles.get(user_id, {}).get("lang", "en")
-    t = TEXTS.get(lang, TEXTS["en"])
+    lang = user_profiles[user_id].get("lang", "ru")
+    t = TEXTS.get(lang, TEXTS["ru"])
 
     if action == "edit_name":
         user_states[user_id] = "awaiting_name"
@@ -512,6 +509,8 @@ def handle_settings_actions(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("nav_"))
 def handle_navigation(call):
     user_id = call.from_user.id
+    ensure_user_profile(user_id, call.from_user.first_name)
+
     if not check_access(user_id):
         bot.answer_callback_query(call.id, "🔒 Access restricted.", show_alert=True)
         return
@@ -555,12 +554,13 @@ def handle_navigation(call):
 
 
 # ==========================================
-# 8. ПОИСК МУЗЫКИ И ЗАМЕТКИ
+# 7. ПОИСК, СКАЧИВАНИЕ MP3 И ЗАМЕТКИ
 # ==========================================
 
 @bot.message_handler(commands=["search_music", "search"])
 def search_music_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     if not check_access(user_id):
         render_paywall(message.chat.id, user_id)
         return
@@ -568,7 +568,7 @@ def search_music_cmd(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         user_states[user_id] = "awaiting_music_query"
-        bot.reply_to(message, "🎧 Введите название трека или исполнителя (например: *The Weeknd*):",
+        bot.reply_to(message, "🎧 Введите название трека (например: *The Weeknd - Blinding Lights*):",
                      parse_mode="Markdown")
         return
 
@@ -576,43 +576,76 @@ def search_music_cmd(message):
 
 
 def execute_music_search(chat_id, query):
-    bot.send_chat_action(chat_id, 'typing')
+    status_msg = bot.send_message(chat_id, f"🔍 Ищу и скачиваю трек: *{query}*...", parse_mode="Markdown")
+    bot.send_chat_action(chat_id, 'upload_audio')
+
+    filename = f"song_{chat_id}.mp3"
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': filename,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'quiet': True,
+        'default_search': 'ytsearch1:',
+    }
+
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"site:youtube.com watch {query}", max_results=3))
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(query, download=True)
+            entry = info['entries'][0] if 'entries' in info else info
+            title = entry.get('title', query)
+            uploader = entry.get('uploader', 'Music')
 
-        if results:
-            text = f"🎶 **Результаты поиска для:** _{query}_\n\n"
-            for item in results:
-                text += f"📌 [{item['title']}]({item['href']})\n\n"
-            text += "💡 Добавить в плейлист: `/add_playlist [ссылка]`"
+        if os.path.exists(filename):
+            bot.edit_message_text("⬆️ Загружаю аудиофайл в чат...", chat_id, status_msg.message_id)
+
+            with open(filename, 'rb') as audio:
+                bot.send_audio(
+                    chat_id,
+                    audio,
+                    title=title,
+                    performer=uploader,
+                    caption=f"🎵 **{title}**\n💡 Добавить в плейлист: `/add_playlist {title}`",
+                    parse_mode="Markdown"
+                )
+
+            os.remove(filename)
+            bot.delete_message(chat_id, status_msg.message_id)
         else:
-            text = "😔 К сожалению, ничего не найдено."
-    except Exception:
-        text = f"🔍 Ошибка поиска '{query}'."
+            bot.edit_message_text("❌ Ошибка с конвертацией файла.", chat_id, status_msg.message_id)
 
-    bot.send_message(chat_id, text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Music download error: {e}")
+        bot.edit_message_text(f"😔 Не удалось скачать трек по запросу *{query}*.", chat_id, status_msg.message_id,
+                              parse_mode="Markdown")
+        if os.path.exists(filename):
+            os.remove(filename)
 
 
 @bot.message_handler(commands=["add_playlist"])
 def add_playlist_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     if not check_access(user_id): return
     args = message.text.split(maxsplit=1)
     if len(args) > 1:
         user_profiles[user_id].setdefault("playlist", []).append(args[1])
         save_json(PROFILES_FILE, user_profiles)
-        bot.reply_to(message, "🎵 Трек добавлен в плейлист!")
+        bot.reply_to(message, "🎵 Трек сохранен в твой плейлист!")
 
 
 @bot.message_handler(commands=["my_playlist"])
 def my_playlist_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     if not check_access(user_id): return
     playlist = user_profiles[user_id].get("playlist", [])
     text = "🎵 **Ваш плейлист:**\n\n"
     if not playlist:
-        text += "Плейлист пуст. Добавьте: `/add_playlist [текст/ссылка]`"
+        text += "Плейлист пуст. Добавьте: `/add_playlist [название]`"
     else:
         for idx, item in enumerate(playlist, 1):
             text += f"{idx}. {item}\n"
@@ -622,6 +655,7 @@ def my_playlist_cmd(message):
 @bot.message_handler(commands=["add_note"])
 def add_note_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     if not check_access(user_id): return
     args = message.text.split(maxsplit=1)
     if len(args) > 1:
@@ -633,6 +667,7 @@ def add_note_cmd(message):
 @bot.message_handler(commands=["add_event"])
 def add_event_cmd(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
     if not check_access(user_id): return
     args = message.text.split(maxsplit=1)
     if len(args) > 1:
@@ -642,7 +677,7 @@ def add_event_cmd(message):
 
 
 # ==========================================
-# 9. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
+# 8. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
 # ==========================================
 
 def background_reminder_loop():
@@ -664,12 +699,13 @@ threading.Thread(target=background_reminder_loop, daemon=True).start()
 
 
 # ==========================================
-# 10. ИИ-ЧАТ И ВВОД ТЕКСТА
+# 9. ИИ-ЧАТ И ВВОД ТЕКСТА
 # ==========================================
 
 @bot.message_handler(func=lambda msg: True)
 def handle_all_messages(message):
     user_id = message.from_user.id
+    ensure_user_profile(user_id, message.from_user.first_name)
 
     if user_id in user_states:
         state = user_states.pop(user_id)
@@ -734,9 +770,9 @@ def handle_all_messages(message):
 
 
 # ==========================================
-# 11. ЗАПУСК
+# 10. ЗАПУСК
 # ==========================================
 
 if __name__ == "__main__":
-    print("🚀 Бот запущен с автосохранением в Telegram-канал!")
+    print("🚀 Бот запущен! MP3 поиск, подписки и бэкапы работают.")
     bot.infinity_polling()

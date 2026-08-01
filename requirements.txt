@@ -1,3 +1,4 @@
 pytelegrambotapi
 Groq
 duckduckgo-search
+yt-dlp
