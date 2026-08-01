@@ -4,7 +4,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from telebot.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    LabeledPrice
+)
 from groq import Groq
 import yt_dlp
 
@@ -66,10 +72,11 @@ TEXTS = {
         "enter_key": "Отправьте команду: `/key ВАШ_КЛЮЧ`",
         "menu_title": "📌 **Главное меню**\nПользователь: **{name}**\nСтатус: **{status}**\nОсталось триала: **{trial_days} дн.**",
         "btn_settings": "⚙️ Настройки",
-        "btn_music": "🎵 Музыка & Плейлист",
+        "btn_music": "🎵 Поиск музыки",
+        "btn_playlist": "🎧 Мой плейлист",
         "btn_notes": "📝 Заметки",
         "btn_calendar": "📅 Календарь",
-        "btn_ai": "🤖 Чат с ИИ (PRO)",
+        "btn_ai": "🤖 Чат с ИИ",
         "trial_activated": "🎉 Триал на 7 дней успешно активирован!",
         "trial_used": "❌ Вы уже использовали свой пробный период.",
         "key_activated": "✅ Ключ активирован! Вам открыт пожизненный PRO-доступ.",
@@ -88,10 +95,11 @@ TEXTS = {
         "enter_key": "Send command: `/key YOUR_KEY`",
         "menu_title": "📌 **Main Menu**\nUser: **{name}**\nStatus: **{status}**\nTrial remaining: **{trial_days} days**",
         "btn_settings": "⚙️ Settings",
-        "btn_music": "🎵 Music & Playlist",
+        "btn_music": "🎵 Search Music",
+        "btn_playlist": "🎧 My Playlist",
         "btn_notes": "📝 Notes",
         "btn_calendar": "📅 Calendar",
-        "btn_ai": "🤖 AI Chat (PRO)",
+        "btn_ai": "🤖 AI Chat",
         "trial_activated": "🎉 7-day trial activated successfully!",
         "trial_used": "❌ You have already used your free trial.",
         "key_activated": "✅ Key activated! Lifetime PRO access granted.",
@@ -110,10 +118,11 @@ TEXTS = {
         "enter_key": "Надішліть команду: `/key ВАШ_КЛЮЧ`",
         "menu_title": "📌 **Головне меню**\nКористувач: **{name}**\nСтатус: **{status}**\nЗалишилося тріалу: **{trial_days} дн.**",
         "btn_settings": "⚙️ Налаштування",
-        "btn_music": "🎵 Музика & Плейлист",
+        "btn_music": "🎵 Пошук музики",
+        "btn_playlist": "🎧 Мій плейлист",
         "btn_notes": "📝 Нотатки",
         "btn_calendar": "📅 Календар",
-        "btn_ai": "🤖 Чат з ШІ (PRO)",
+        "btn_ai": "🤖 Чат з ШІ",
         "trial_activated": "🎉 Тріал на 7 днів успішно активовано!",
         "trial_used": "❌ Ви вже використали свій пробний період.",
         "key_activated": "✅ Ключ активовано! Вам відкрито довічний PRO-доступ.",
@@ -132,10 +141,11 @@ TEXTS = {
         "enter_key": "Senden Sie den Befehl: `/key IHR_SCHLÜSSEL`",
         "menu_title": "📌 **Hauptmenü**\nBenutzer: **{name}**\nStatus: **{status}**\nVerbleibende Testzeit: **{trial_days} Tage**",
         "btn_settings": "⚙️ Einstellungen",
-        "btn_music": "🎵 Musik & Playlist",
+        "btn_music": "🎵 Musik suchen",
+        "btn_playlist": "🎧 Meine Playlist",
         "btn_notes": "📝 Notizen",
         "btn_calendar": "📅 Kalender",
-        "btn_ai": "🤖 KI-Chat (PRO)",
+        "btn_ai": "🤖 KI-Chat",
         "trial_activated": "🎉 7-Tage-Testversion erfolgreich aktiviert!",
         "trial_used": "❌ Sie haben Ihre kostenlose Testversion bereits genutzt.",
         "key_activated": "✅ Schlüssel aktiviert! Lebenslanger PRO-Zugriff gewährt.",
@@ -219,7 +229,6 @@ if not os.path.exists(KEYS_FILE):
 
 
 def ensure_user_profile(user_id, first_name="User"):
-    """Безопасно создает профиль пользователя, предотвращая KeyError"""
     if user_id not in user_profiles:
         user_profiles[user_id] = {
             "name": first_name or "User",
@@ -252,22 +261,25 @@ def check_access(user_id):
 
 
 # ==========================================
-# 3. КНОПКИ И МЕНЮ
+# 3. КЛАВИАТУРЫ И МЕНЮ
 # ==========================================
 
-def get_menu_keyboard(lang):
+def get_reply_keyboard(lang):
+    """Постоянные кнопки под полем ввода текста"""
     t = TEXTS.get(lang, TEXTS["en"])
-    markup = InlineKeyboardMarkup(row_width=2)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
 
-    btn_ai = InlineKeyboardButton(t["btn_ai"], callback_data="nav_ai")
-    btn_music = InlineKeyboardButton(t["btn_music"], callback_data="nav_music")
-    btn_notes = InlineKeyboardButton(t["btn_notes"], callback_data="nav_notes")
-    btn_cal = InlineKeyboardButton(t["btn_calendar"], callback_data="nav_calendar")
-    btn_set = InlineKeyboardButton(t["btn_settings"], callback_data="nav_settings")
+    btn_ai = KeyboardButton(t["btn_ai"])
+    btn_music = KeyboardButton(t["btn_music"])
+    btn_playlist = KeyboardButton(t["btn_playlist"])
+    btn_notes = KeyboardButton(t["btn_notes"])
+    btn_cal = KeyboardButton(t["btn_calendar"])
+    btn_settings = KeyboardButton(t["btn_settings"])
 
     markup.add(btn_ai)
-    markup.add(btn_music, btn_notes)
-    markup.add(btn_cal, btn_set)
+    markup.add(btn_music, btn_playlist)
+    markup.add(btn_notes, btn_cal)
+    markup.add(btn_settings)
     return markup
 
 
@@ -289,12 +301,10 @@ def get_settings_keyboard(user_id):
     btn_city = InlineKeyboardButton(t["btn_edit_city"], callback_data="set_edit_city")
     btn_rem = InlineKeyboardButton(rem_status, callback_data="set_toggle_reminders")
     btn_lang = InlineKeyboardButton(t["btn_lang"], callback_data="set_change_lang")
-    btn_back = InlineKeyboardButton(t["btn_back"], callback_data="nav_main_menu")
 
     markup.add(btn_name, btn_city)
     markup.add(btn_rem)
     markup.add(btn_lang)
-    markup.add(btn_back)
     return markup
 
 
@@ -350,8 +360,8 @@ def render_paywall(chat_id, user_id):
 def render_main_menu(chat_id, user_id):
     ensure_user_profile(user_id)
     profile = user_profiles[user_id]
-    lang = profile.get("lang", "en")
-    t = TEXTS.get(lang, TEXTS["en"])
+    lang = profile.get("lang", "ru")
+    t = TEXTS.get(lang, TEXTS["ru"])
 
     trial_days = 0
     if profile.get("trial_until"):
@@ -364,7 +374,7 @@ def render_main_menu(chat_id, user_id):
         status=profile.get("status").upper(),
         trial_days=trial_days
     )
-    bot.send_message(chat_id, text, reply_markup=get_menu_keyboard(lang), parse_mode="Markdown")
+    bot.send_message(chat_id, text, reply_markup=get_reply_keyboard(lang), parse_mode="Markdown")
 
 
 # ==========================================
@@ -452,7 +462,7 @@ def process_payment(message):
 
 
 # ==========================================
-# 6. НАВИГАЦИЯ И НАСТРОЙКИ
+# 6. НАСТРОЙКИ
 # ==========================================
 
 def render_settings_page(chat_id, user_id, message_id=None):
@@ -506,55 +516,8 @@ def handle_settings_actions(call):
         cmd_start(call.message)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("nav_"))
-def handle_navigation(call):
-    user_id = call.from_user.id
-    ensure_user_profile(user_id, call.from_user.first_name)
-
-    if not check_access(user_id):
-        bot.answer_callback_query(call.id, "🔒 Access restricted.", show_alert=True)
-        return
-
-    nav = call.data.split("_")[1]
-    chat_id = call.message.chat.id
-
-    if nav == "settings":
-        render_settings_page(chat_id, user_id)
-
-    elif nav == "main_menu":
-        render_main_menu(chat_id, user_id)
-
-    elif nav == "music":
-        bot.send_message(chat_id,
-                         "🎵 **Music / Музыка**\n\nИспользуйте команду:\n`/search_music [запрос]` или `/search [запрос]`\n\nПлейлист: `/my_playlist`",
-                         parse_mode="Markdown")
-
-    elif nav == "notes":
-        notes = user_profiles[user_id].get("notes", [])
-        text = "📝 **Notes / Заметки:**\n\n"
-        if not notes:
-            text += "Empty. Add: `/add_note [text]`"
-        else:
-            for idx, item in enumerate(notes, 1):
-                text += f"{idx}. {item}\n"
-        bot.send_message(chat_id, text, parse_mode="Markdown")
-
-    elif nav == "calendar":
-        events = user_profiles[user_id].get("events", [])
-        text = "📅 **Calendar / Календарь:**\n\n"
-        if not events:
-            text += "Empty. Add: `/add_event [text]`"
-        else:
-            for idx, item in enumerate(events, 1):
-                text += f"{idx}. {item}\n"
-        bot.send_message(chat_id, text, parse_mode="Markdown")
-
-    elif nav == "ai":
-        bot.send_message(chat_id, "🤖 **AI Chat activated!** Ask your question in chat.")
-
-
 # ==========================================
-# 7. ПОИСК, СКАЧИВАНИЕ MP3 И ЗАМЕТКИ
+# 7. ПОИСК МУЗЫКИ ПО SOUNDCLOUD (yt-dlp)
 # ==========================================
 
 @bot.message_handler(commands=["search_music", "search"])
@@ -589,15 +552,18 @@ def execute_music_search(chat_id, query):
             'preferredquality': '192',
         }],
         'quiet': True,
-        'default_search': 'ytsearch1:',
+        'default_search': 'scsearch1:',  # Работает через SoundCloud (без 429 банов на Render)
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'logtostderr': False,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(query, download=True)
-            entry = info['entries'][0] if 'entries' in info else info
+            entry = info['entries'][0] if ('entries' in info and len(info['entries']) > 0) else info
             title = entry.get('title', query)
-            uploader = entry.get('uploader', 'Music')
+            uploader = entry.get('uploader') or entry.get('artist') or 'Music'
 
         if os.path.exists(filename):
             bot.edit_message_text("⬆️ Загружаю аудиофайл в чат...", chat_id, status_msg.message_id)
@@ -615,15 +581,23 @@ def execute_music_search(chat_id, query):
             os.remove(filename)
             bot.delete_message(chat_id, status_msg.message_id)
         else:
-            bot.edit_message_text("❌ Ошибка с конвертацией файла.", chat_id, status_msg.message_id)
+            bot.edit_message_text("❌ Ошибка при генерации аудиофайла.", chat_id, status_msg.message_id)
 
     except Exception as e:
-        print(f"Music download error: {e}")
-        bot.edit_message_text(f"😔 Не удалось скачать трек по запросу *{query}*.", chat_id, status_msg.message_id,
-                              parse_mode="Markdown")
+        print(f"SoundCloud Search Error: {e}")
+        bot.edit_message_text(
+            f"😔 Не удалось найти трек *{query}* на SoundCloud.\nПопробуйте уточнить запрос.",
+            chat_id,
+            status_msg.message_id,
+            parse_mode="Markdown"
+        )
         if os.path.exists(filename):
             os.remove(filename)
 
+
+# ==========================================
+# 8. ПЛЕЙЛИСТ, ЗАМЕТКИ, КАЛЕНДАРЬ
+# ==========================================
 
 @bot.message_handler(commands=["add_playlist"])
 def add_playlist_cmd(message):
@@ -677,7 +651,7 @@ def add_event_cmd(message):
 
 
 # ==========================================
-# 8. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
+# 9. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
 # ==========================================
 
 def background_reminder_loop():
@@ -689,7 +663,7 @@ def background_reminder_loop():
                     bot.send_message(
                         uid,
                         f"👋 {profile.get('name')}! How are you doing?",
-                        reply_markup=get_menu_keyboard(profile.get("lang", "en"))
+                        reply_markup=get_reply_keyboard(profile.get("lang", "en"))
                     )
                 except Exception:
                     pass
@@ -699,42 +673,76 @@ threading.Thread(target=background_reminder_loop, daemon=True).start()
 
 
 # ==========================================
-# 9. ИИ-ЧАТ И ВВОД ТЕКСТА
+# 10. ОБРАБОТЧИК КНОПОК И ЧАТ С ИИ
 # ==========================================
 
 @bot.message_handler(func=lambda msg: True)
 def handle_all_messages(message):
     user_id = message.from_user.id
     ensure_user_profile(user_id, message.from_user.first_name)
+    user_text = message.text.strip()
 
+    # --- ОБРАБОТКА НАЖАТИЙ НИЖНЕЙ КЛАВИАТУРЫ ---
+    if user_text in ["🎵 Поиск музыки", "🎵 Пошук музики", "🎵 Musik suchen", "🎵 Search Music"]:
+        user_states[user_id] = "awaiting_music_query"
+        bot.reply_to(message, "🎧 Введите название трека (например: *The Weeknd - Blinding Lights*):",
+                     parse_mode="Markdown")
+        return
+
+    elif user_text in ["🎧 Мой плейлист", "🎧 Мій плейлист", "🎧 Meine Playlist", "🎧 My Playlist"]:
+        my_playlist_cmd(message)
+        return
+
+    elif user_text in ["📝 Заметки", "📝 Нотатки", "📝 Notizen", "📝 Notes"]:
+        notes = user_profiles[user_id].get("notes", [])
+        text = "📝 **Заметки:**\n\n" + (
+            "\n".join([f"{i + 1}. {n}" for i, n in enumerate(notes)]) if notes else "Пусто. Добавь: `/add_note текст`")
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+        return
+
+    elif user_text in ["📅 Календарь", "📅 Календар", "📅 Kalender", "📅 Calendar"]:
+        events = user_profiles[user_id].get("events", [])
+        text = "📅 **События:**\n\n" + ("\n".join(
+            [f"{i + 1}. {e}" for i, e in enumerate(events)]) if events else "Пусто. Добавь: `/add_event текст`")
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+        return
+
+    elif user_text in ["⚙️ Настройки", "⚙️ Налаштування", "⚙️ Einstellungen", "⚙️ Settings"]:
+        render_settings_page(message.chat.id, user_id)
+        return
+
+    elif user_text in ["🤖 Чат с ИИ", "🤖 Чат з ШІ", "🤖 KI-Chat", "🤖 AI Chat"]:
+        bot.reply_to(message, "🤖 Режим ИИ активен! Задай мне любой вопрос прямо в чат.")
+        return
+
+    # --- ПРОВЕРКА СОСТОЯНИЙ ВВОДА (ИМЯ, ГОРОД, ПОИСК ТРЕКА) ---
     if user_id in user_states:
         state = user_states.pop(user_id)
-        text = message.text.strip()
 
         if state == "awaiting_name":
-            user_profiles[user_id]["name"] = text
+            user_profiles[user_id]["name"] = user_text
             save_json(PROFILES_FILE, user_profiles)
-            bot.reply_to(message, f"✅ Name set to: **{text}**.", parse_mode="Markdown")
+            bot.reply_to(message, f"✅ Имя изменено на: **{user_text}**.", parse_mode="Markdown")
             render_settings_page(message.chat.id, user_id)
             return
 
         elif state == "awaiting_city":
-            user_profiles[user_id]["city"] = text
+            user_profiles[user_id]["city"] = user_text
             save_json(PROFILES_FILE, user_profiles)
-            bot.reply_to(message, f"✅ City set to: **{text}**.", parse_mode="Markdown")
+            bot.reply_to(message, f"✅ Город изменен на: **{user_text}**.", parse_mode="Markdown")
             render_settings_page(message.chat.id, user_id)
             return
 
         elif state == "awaiting_music_query":
-            execute_music_search(message.chat.id, text)
+            execute_music_search(message.chat.id, user_text)
             return
 
+    # --- ПРОВЕРКА ДОСТУПА И ДИАЛОГ С ИИ ---
     if not check_access(user_id):
         render_paywall(message.chat.id, user_id)
         return
 
     chat_id = message.chat.id
-    user_text = message.text
 
     if chat_id not in user_histories:
         user_histories[chat_id] = []
@@ -766,13 +774,13 @@ def handle_all_messages(message):
         user_histories[chat_id].append({"role": "assistant", "content": reply})
         bot.reply_to(message, reply)
     except Exception as e:
-        bot.reply_to(message, "⚠️ AI error. Try again later.")
+        bot.reply_to(message, "⚠️ Ошибка ИИ. Попробуйте позже.")
 
 
 # ==========================================
-# 10. ЗАПУСК
+# 11. ЗАПУСК
 # ==========================================
 
 if __name__ == "__main__":
-    print("🚀 Бот запущен! MP3 поиск, подписки и бэкапы работают.")
+    print("🚀 Бот запущен! Кнопки меню, MP3 скачивание и бэкапы функционируют.")
     bot.infinity_polling()
