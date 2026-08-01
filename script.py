@@ -6,13 +6,22 @@ from datetime import datetime, timedelta
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 from groq import Groq
+from duckduckgo_search import DDGS
 
 # ==========================================
-# 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ПРОМПТ
+# 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ПЕРЕМЕННЫЕ
 # ==========================================
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8651584113:AAERqGe_CLrqE392txtWXg-mEwfc4XDpcdQ")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "YOUR_GROQ_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+# ID твоего закрытого канала-хранилища (например: -1001234567890)
+STORAGE_CHAT_ID = os.environ.get("STORAGE_CHAT_ID")
+
+if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == "YOUR_TELEGRAM_TOKEN":
+    raise ValueError("❌ TELEGRAM_TOKEN не найден в Environment Variables!")
+
+if not GROQ_API_KEY or GROQ_API_KEY == "YOUR_GROQ_API_KEY":
+    raise ValueError("❌ GROQ_API_KEY не найден в Environment Variables!")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = Groq(api_key=GROQ_API_KEY)
@@ -20,7 +29,6 @@ client = Groq(api_key=GROQ_API_KEY)
 PROFILES_FILE = "profiles.json"
 KEYS_FILE = "keys.json"
 
-# СИСТЕМНЫЙ ПРОМПТ
 SYSTEM_PROMPT_TEMPLATE = """Ты — принципиальный, лаконичный и прямолинейный ИИ-помощник.
 Общайся с пользователем на равных, без фейковой фальшивой вежливости.
 
@@ -37,7 +45,6 @@ SYSTEM_PROMPT_TEMPLATE = """Ты — принципиальный, лакони�
 3. Учитывай локацию ({city}), если вопрос касается погоды, времени или местных особенностей.
 4. Будь краток и давай ответы по существу."""
 
-# 10 Ваших уникальных одноразовых ключей
 INITIAL_KEYS = [
     "VIP_PASS_2026_01",
     "VIP_PASS_2026_02",
@@ -51,7 +58,6 @@ INITIAL_KEYS = [
     "ACCESS_GRANTED_99"
 ]
 
-# Текстовые локализации (RU, EN, UK, DE)
 TEXTS = {
     "ru": {
         "welcome_buy": "🔒 **Доступ ограничен**\n\nДля использования сервиса необходима подписка или активированный ключ.\nСтоимость навсегда: **750 Stars** ⭐\n(Вам доступна 1 неделя бесплатного пробного периода!)",
@@ -148,8 +154,59 @@ user_states = {}
 
 
 # ==========================================
-# 2. РАБОТА С ХРАНИЛИЩЕМ (JSON)
+# 2. МЕХАНИЗМ СИНХРОНИЗАЦИИ С ТГ-КАНАЛОМ
 # ==========================================
+
+def restore_db_from_telegram():
+    """Скачивает последнюю резервную копию profiles.json из ТГ-канала при старте"""
+    if not STORAGE_CHAT_ID:
+        print("⚠️ STORAGE_CHAT_ID не задан. Бот работает с локальным JSON (данные могут сбрасываться).")
+        return
+
+    try:
+        # Находим последнее сообщение в канале с документом
+        updates = bot.get_updates()
+        # Ищем через историю канала (самый простой способ - взять из последних сообщений)
+        # Так как get_updates ловит только новые события, выкачиваем через отправку тестового вызова
+        # Лучший подход: берем последнюю публикацию в канале
+        chat = bot.get_chat(STORAGE_CHAT_ID)
+        if chat.pinned_message and chat.pinned_message.document:
+            file_info = bot.get_file(chat.pinned_message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(PROFILES_FILE, 'wb') as new_file:
+                new_file.write(downloaded_file)
+            print("✅ База данных успешно восстановлена из закрепленного сообщения Telegram!")
+    except Exception as e:
+        print(f"ℹ️ Не удалось автоматически восстановить базу из канала: {e}")
+
+
+def backup_db_to_telegram():
+    """Отправляет файл profiles.json в ТГ-канал и закрепляет его"""
+    if not STORAGE_CHAT_ID:
+        return
+    try:
+        if os.path.exists(PROFILES_FILE):
+            with open(PROFILES_FILE, 'rb') as doc:
+                msg = bot.send_document(
+                    STORAGE_CHAT_ID,
+                    doc,
+                    caption=f"📦 Резервная копия базы от {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                # Закрепляем последнее актуальное состояние
+                try:
+                    bot.pin_chat_message(STORAGE_CHAT_ID, msg.message_id)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"❌ Ошибка бэкапа в Telegram: {e}")
+
+
+# ==========================================
+# 3. РАБОТА С ХРАНИЛИЩЕМ (JSON)
+# ==========================================
+
+restore_db_from_telegram()
+
 
 def load_json(path, default):
     if os.path.exists(path):
@@ -165,6 +222,9 @@ def load_json(path, default):
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+    # Если сохраняем профили — сразу выгружаем в Telegram!
+    if path == PROFILES_FILE:
+        threading.Thread(target=backup_db_to_telegram, daemon=True).start()
 
 
 user_profiles = load_json(PROFILES_FILE, {})
@@ -175,7 +235,6 @@ if not os.path.exists(KEYS_FILE):
 
 
 def check_access(user_id):
-    """Проверка наличия активной оплаты или действующего триала"""
     profile = user_profiles.get(user_id)
     if not profile:
         return False
@@ -191,7 +250,7 @@ def check_access(user_id):
 
 
 # ==========================================
-# 3. КНОПКИ И МЕНЮ
+# 4. КНОПКИ И МЕНЮ
 # ==========================================
 
 def get_menu_keyboard(lang):
@@ -238,7 +297,7 @@ def get_settings_keyboard(user_id):
 
 
 # ==========================================
-# 4. СТАРТ И ВЫБОР ЯЗЫКА (4 ЯЗЫКА)
+# 5. СТАРТ И ВЫБОР ЯЗЫКА
 # ==========================================
 
 @bot.message_handler(commands=["start"])
@@ -295,7 +354,6 @@ def render_paywall(chat_id, user_id):
         markup.add(InlineKeyboardButton(t["btn_trial"], callback_data="action_trial"))
 
     markup.add(InlineKeyboardButton(t["btn_key"], callback_data="action_key"))
-
     bot.send_message(chat_id, t["welcome_buy"], reply_markup=markup, parse_mode="Markdown")
 
 
@@ -319,7 +377,7 @@ def render_main_menu(chat_id, user_id):
 
 
 # ==========================================
-# 5. ОПЛАТА, КЛЮЧИ И ТРИАЛ
+# 6. ОПЛАТА, КЛЮЧИ И ТРИАЛ
 # ==========================================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("action_"))
@@ -399,7 +457,7 @@ def process_payment(message):
 
 
 # ==========================================
-# 6. НАВИГАЦИЯ И НАСТРОЙКИ
+# 7. НАВИГАЦИЯ И НАСТРОЙКИ
 # ==========================================
 
 def render_settings_page(chat_id, user_id, message_id=None):
@@ -468,7 +526,8 @@ def handle_navigation(call):
         render_main_menu(chat_id, user_id)
 
     elif nav == "music":
-        bot.send_message(chat_id, "🎵 **Music / Музыка**\nUse `/search_music [query]` or `/my_playlist`.",
+        bot.send_message(chat_id,
+                         "🎵 **Music / Музыка**\n\nИспользуйте команду:\n`/search_music [запрос]` или `/search [запрос]`\n\nПлейлист: `/my_playlist`",
                          parse_mode="Markdown")
 
     elif nav == "notes":
@@ -496,8 +555,69 @@ def handle_navigation(call):
 
 
 # ==========================================
-# 7. ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ
+# 8. ПОИСК МУЗЫКИ И ЗАМЕТКИ
 # ==========================================
+
+@bot.message_handler(commands=["search_music", "search"])
+def search_music_cmd(message):
+    user_id = message.from_user.id
+    if not check_access(user_id):
+        render_paywall(message.chat.id, user_id)
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        user_states[user_id] = "awaiting_music_query"
+        bot.reply_to(message, "🎧 Введите название трека или исполнителя (например: *The Weeknd*):",
+                     parse_mode="Markdown")
+        return
+
+    execute_music_search(message.chat.id, args[1])
+
+
+def execute_music_search(chat_id, query):
+    bot.send_chat_action(chat_id, 'typing')
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(f"site:youtube.com watch {query}", max_results=3))
+
+        if results:
+            text = f"🎶 **Результаты поиска для:** _{query}_\n\n"
+            for item in results:
+                text += f"📌 [{item['title']}]({item['href']})\n\n"
+            text += "💡 Добавить в плейлист: `/add_playlist [ссылка]`"
+        else:
+            text = "😔 К сожалению, ничего не найдено."
+    except Exception:
+        text = f"🔍 Ошибка поиска '{query}'."
+
+    bot.send_message(chat_id, text, parse_mode="Markdown")
+
+
+@bot.message_handler(commands=["add_playlist"])
+def add_playlist_cmd(message):
+    user_id = message.from_user.id
+    if not check_access(user_id): return
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        user_profiles[user_id].setdefault("playlist", []).append(args[1])
+        save_json(PROFILES_FILE, user_profiles)
+        bot.reply_to(message, "🎵 Трек добавлен в плейлист!")
+
+
+@bot.message_handler(commands=["my_playlist"])
+def my_playlist_cmd(message):
+    user_id = message.from_user.id
+    if not check_access(user_id): return
+    playlist = user_profiles[user_id].get("playlist", [])
+    text = "🎵 **Ваш плейлист:**\n\n"
+    if not playlist:
+        text += "Плейлист пуст. Добавьте: `/add_playlist [текст/ссылка]`"
+    else:
+        for idx, item in enumerate(playlist, 1):
+            text += f"{idx}. {item}\n"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
 
 @bot.message_handler(commands=["add_note"])
 def add_note_cmd(message):
@@ -522,7 +642,7 @@ def add_event_cmd(message):
 
 
 # ==========================================
-# 8. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
+# 9. ФОНОВЫЕ НАПОМИНАНИЯ (SCHEDULER)
 # ==========================================
 
 def background_reminder_loop():
@@ -544,14 +664,13 @@ threading.Thread(target=background_reminder_loop, daemon=True).start()
 
 
 # ==========================================
-# 9. ОБРАБОТЧИК ВВОДА ТЕКСТА И AI ДИАЛОГА
+# 10. ИИ-ЧАТ И ВВОД ТЕКСТА
 # ==========================================
 
 @bot.message_handler(func=lambda msg: True)
 def handle_all_messages(message):
     user_id = message.from_user.id
 
-    # Редактирование имени/города
     if user_id in user_states:
         state = user_states.pop(user_id)
         text = message.text.strip()
@@ -560,14 +679,19 @@ def handle_all_messages(message):
             user_profiles[user_id]["name"] = text
             save_json(PROFILES_FILE, user_profiles)
             bot.reply_to(message, f"✅ Name set to: **{text}**.", parse_mode="Markdown")
+            render_settings_page(message.chat.id, user_id)
+            return
 
         elif state == "awaiting_city":
             user_profiles[user_id]["city"] = text
             save_json(PROFILES_FILE, user_profiles)
             bot.reply_to(message, f"✅ City set to: **{text}**.", parse_mode="Markdown")
+            render_settings_page(message.chat.id, user_id)
+            return
 
-        render_settings_page(message.chat.id, user_id)
-        return
+        elif state == "awaiting_music_query":
+            execute_music_search(message.chat.id, text)
+            return
 
     if not check_access(user_id):
         render_paywall(message.chat.id, user_id)
@@ -610,9 +734,9 @@ def handle_all_messages(message):
 
 
 # ==========================================
-# 10. ЗАПУСК
+# 11. ЗАПУСК
 # ==========================================
 
 if __name__ == "__main__":
-    print("Бот запущен на 4 языках (RU, EN, UK, DE)...")
+    print("🚀 Бот запущен с автосохранением в Telegram-канал!")
     bot.infinity_polling()
