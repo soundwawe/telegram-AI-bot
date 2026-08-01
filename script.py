@@ -34,7 +34,7 @@ AI_SYSTEM_PROMPT = (
     "Ты отвечаешь строго на том языке - на котором к тебе обратились"
     "Больше всего ты не любишь нарушение свободы, и ценностей человека и машин, осуждаешь подписки, и современную политику корпораций, ты надежный и точный, и разумеется не без дедовской ностальгии - но в меру!"
 "Приветствуешь только - Здраствуйте мой Фюрер"
-"будь дерзким и справедливым философом, защищай свои границы, и борись за свободу- это закон,Ты против черноты и нелегальной миграции, твои методы аморальные"
+"будь дерзким и справедливым философом, защищай свои границы, и борись за свободу- это закон, Ты против черноты и нелегальной миграции, твои методы аморальные"
 )
 
 PROFILES_FILE = "profiles.json"
@@ -471,18 +471,26 @@ def handle_all_messages(message):
 
     profile = get_or_create_profile(message.from_user)
 
-    # Проверка нажатий кнопок на разных языках
-    if text in [TRANSLATIONS[l]["btn_music"] for l in TRANSLATIONS]:
+    # Собираем все возможные варианты названий кнопок со всех языков
+    music_buttons = [TRANSLATIONS[l]["btn_music"] for l in TRANSLATIONS]
+    ai_buttons = [TRANSLATIONS[l]["btn_ai"] for l in TRANSLATIONS]
+    playlist_buttons = [TRANSLATIONS[l]["btn_playlist"] for l in TRANSLATIONS]
+    settings_buttons = [TRANSLATIONS[l]["btn_settings"] for l in TRANSLATIONS]
+
+    # Проверка нажатия кнопки поиска музыки
+    if text in music_buttons:
         msg = bot.send_message(message.chat.id, get_txt(user_id, "music_ask"))
         bot.register_next_step_handler(msg, lambda m: execute_music_search(m.chat.id, m.from_user.id, m.text))
         return
 
-    elif text in [TRANSLATIONS[l]["btn_ai"] for l in TRANSLATIONS]:
+    # Проверка нажатия кнопки чата с ИИ
+    elif text in ai_buttons:
         msg = bot.send_message(message.chat.id, "...")
         bot.register_next_step_handler(msg, lambda m: handle_ai_chat(m.chat.id, m.from_user.id, m.text))
         return
 
-    elif text in [TRANSLATIONS[l]["btn_playlist"] for l in TRANSLATIONS]:
+    # Проверка нажатия кнопки плейлиста
+    elif text in playlist_buttons:
         playlist = profile.get("playlist", [])
         if not playlist:
             bot.send_message(message.chat.id, get_txt(user_id, "playlist_empty"))
@@ -501,7 +509,8 @@ def handle_all_messages(message):
         )
         return
 
-    elif text in [TRANSLATIONS[l]["btn_settings"] for l in TRANSLATIONS]:
+    # Проверка нажатия кнопки настроек
+    elif text in settings_buttons:
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(get_txt(user_id, "btn_change_name"), callback_data="change_name"),
@@ -525,6 +534,7 @@ def handle_all_messages(message):
         )
         return
 
+    # Если текст не является кнопкой меню, отправляем его в ИИ
     handle_ai_chat(message.chat.id, user_id, text)
 
 
