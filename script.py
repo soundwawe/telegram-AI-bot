@@ -11,7 +11,7 @@ from groq import Groq
 # 1. ГЛОБАЛЬНЫЕ НАСТРОЙКИ И ПРОМПТ
 # ==========================================
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8651584113:AAERqGe_CLrqE392txtWXg-mEwfc4XDpcdQ")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "YOUR_GROQ_API_KEY")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
