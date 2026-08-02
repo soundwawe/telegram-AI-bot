@@ -12,7 +12,7 @@ from groq import Groq
 # ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_BOT_TOKEN_HERE")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR_GROQ_KEY_HERE")
-BACKUP_CHANNEL_ID = os.getenv("BACKUP_CHANNEL_ID", None)
+Storage_chat_id = os.getenv("STORAGE_CHAT_ID", None)
 
 ADMIN_IDS = [6198121786, 855037777, 1783598260, 1008386326, 1871808965, 7981552192, 1233602706, 1616385873, 2124460366,
              586916399, 7415216444, 5140385006]
@@ -61,7 +61,9 @@ TRANSLATIONS = {
         "key_usage": "Использование: /key ВАШ_КЛЮЧ",
         "key_success": "Ключ успешно активирован! Вам присвоен вечный VIP статус.",
         "key_invalid": "Неверный или уже использованный ключ.",
-        "access_denied": "Доступ ограничен.\nАктивируйте VIP-доступ командой /key ВАШ_КЛЮЧ.",
+        "access_denied": "🔒 Доступ ограничен!\nУ вас нет активной подписки или пробного периода.",
+        "trial_activated": "🎉 Пробный период на 7 дней успешно активирован! Добро пожаловать.",
+        "trial_already_used": "⚠️ Вы уже использовали пробный период ранее.",
         "music_ask": "Введите название трека или исполнителя:",
         "music_downloading": "Ищу и скачиваю трек: {query}...",
         "music_uploading": "Загружаю аудиофайл в чат...",
@@ -73,7 +75,7 @@ TRANSLATIONS = {
         "playlist_empty": "Ваш плейлист пока пуст.\n\nКак пополнить? Перешлите боту любое аудио из чата!",
         "playlist_title": "Ваш плейлист (Всего: {count} треков):\nНажмите на название для воспроизведения:",
         "track_deleted": "Трек {title} удален из плейлиста.",
-        "settings_title": "Настройки профиля\n\nВаш Telegram ID: {id}\nИмя: {name}\nЯзык: {lang}\nСтатус: {status}",
+        "settings_title": "Настройки профиля\n\nВаш Telegram ID: {id}\nИмя: {name}\nЯзык: {lang}\nСтатус: {status}\n\nКупить VIP (750 ⭐): /buy_vip",
         "btn_change_name": "Изменить имя",
         "btn_change_lang": "Изменить язык",
         "enter_new_name": "Введите новое имя, по которому к вам обращаться:",
@@ -95,7 +97,9 @@ TRANSLATIONS = {
         "key_usage": "Використання: /key ВАШ_КЛЮЧ",
         "key_success": "Ключ успішно активовано! Вам надано вічний VIP статус.",
         "key_invalid": "Невірний або вже використаний ключ.",
-        "access_denied": "Доступ обмежено.\nАктивуйте VIP-доступ командою /key ВАШ_КЛЮЧ.",
+        "access_denied": "🔒 Доступ обмежено!\nУ вас немає активної підписки або пробного періоду.",
+        "trial_activated": "🎉 Пробний період на 7 днів успішно активовано! Ласкаво просимо.",
+        "trial_already_used": "⚠️ Ви вже використовували пробний період раніше.",
         "music_ask": "Введіть назву треку або виконавця:",
         "music_downloading": "Шукаю та завантажую трек: {query}...",
         "music_uploading": "Завантажую аудіофайл у чат...",
@@ -107,7 +111,7 @@ TRANSLATIONS = {
         "playlist_empty": "Ваш плейліст поки порожній.\n\nЯк поповнити? Перешліть боту будь-яке аудіо з чату!",
         "playlist_title": "Ваш плейліст (Усього: {count} треків):\nНатисніть на назву для відтворення:",
         "track_deleted": "Трек {title} видалено з плейліста.",
-        "settings_title": "Налаштування профілю\n\nВаш Telegram ID: {id}\nІм'я: {name}\nМова: {lang}\nСтатус: {status}",
+        "settings_title": "Налаштування профілю\n\nВаш Telegram ID: {id}\nІм'я: {name}\nМова: {lang}\nСтатус: {status}\n\nПридбати VIP (750 ⭐): /buy_vip",
         "btn_change_name": "Змінити ім'я",
         "btn_change_lang": "Змінити мову",
         "enter_new_name": "Введіть нове ім'я, за яким до вас звертатися:",
@@ -127,29 +131,31 @@ TRANSLATIONS = {
         "btn_playlist": "Meine Playlist",
         "btn_settings": "Einstellungen",
         "key_usage": "Verwendung: /key IHR_SCHLÜSSEL",
-        "key_success": "Schlüssel erfolgreich aktiviert! Sie haben dauerhaften VIP-Status.",
-        "key_invalid": "Ungültiger oder bereits verwendeter Schlüssel.",
-        "access_denied": "Zugriff beschränkt.\nAktivieren Sie den VIP-Zugriff mit /key IHR_SCHLÜSSEL.",
-        "music_ask": "Geben Sie den Titel oder den Künstler ein:",
-        "music_downloading": "Suche und lade Titel herunter: {query}...",
-        "music_uploading": "Lade Audiodatei in den Chat hoch...",
-        "music_caption": "Titel: {title}\n\nLeiten Sie dieses Audio an den Bot weiter, um es zur Playlist hinzuzufügen!",
-        "music_not_found": "Fehler beim Herunterladen der Datei.",
-        "music_error": "Titel konnte nicht heruntergeladen werden {query}.\nFehler: {error}",
-        "audio_already_in_playlist": "Der Titel {title} ist bereits in Ihrer Playlist!",
-        "audio_added": "Titel {title} zu Ihrer Playlist hinzugefügt!",
-        "playlist_empty": "Ihre Playlist ist noch leer.\n\nWie hinzufügen? Leiten Sie eine Audiodatei aus einem beliebigen Chat weiter!",
-        "playlist_title": "Ihre Playlist (Gesamt: {count} Titel):\nKlicken Sie auf den Namen zum Abspielen:",
-        "track_deleted": "Titel {title} aus der Playlist gelöscht.",
-        "settings_title": "Profileinstellungen\n\nIhre Telegram ID: {id}\nName: {name}\nSprache: {lang}\nStatus: {status}",
+        "key_success": "Schlüssel erfolgreich aktiviert!",
+        "key_invalid": "Ungültiger Schlüssel.",
+        "access_denied": "🔒 Zugriff beschränkt!\nKein aktives Abonnement oder Testzeitraum.",
+        "trial_activated": "🎉 Testzeitraum (7 Tage) aktiviert!",
+        "trial_already_used": "⚠️ Bereits genutzt.",
+        "music_ask": "Titel eingeben:",
+        "music_downloading": "Lade herunter...",
+        "music_uploading": "Lade hoch...",
+        "music_caption": "Titel: {title}",
+        "music_not_found": "Nicht gefunden.",
+        "music_error": "Fehler.",
+        "audio_already_in_playlist": "Bereits drin.",
+        "audio_added": "Hinzugefügt.",
+        "playlist_empty": "Leer.",
+        "playlist_title": "Playlist:",
+        "track_deleted": "Gelöscht.",
+        "settings_title": "Einstellungen\nID: {id}\nName: {name}\nStatus: {status}",
         "btn_change_name": "Name ändern",
         "btn_change_lang": "Sprache ändern",
-        "enter_new_name": "Geben Sie Ihren neuen Namen ein:",
-        "name_updated": "Name erfolgreich aktualisiert: {name}!",
-        "lang_updated": "Sprache erfolgreich auf Deutsch geändert!",
-        "ai_thinking": "KI denkt nach...",
-        "ai_no_key": "KI-Modul ist nicht konfiguriert.",
-        "ai_error": "Fehler bei der Generierung der Antwort der KI."
+        "enter_new_name": "Neuer Name:",
+        "name_updated": "Aktualisiert!",
+        "lang_updated": "Sprache geändert!",
+        "ai_thinking": "Denkt nach...",
+        "ai_no_key": "Kein KI-Schlüssel.",
+        "ai_error": "Fehler."
     },
     "en": {
         "ask_lang": "🌐 Choose your language / Выберите язык / Wählen Sie Ihre Sprache:",
@@ -161,29 +167,31 @@ TRANSLATIONS = {
         "btn_playlist": "My Playlist",
         "btn_settings": "Settings",
         "key_usage": "Usage: /key YOUR_KEY",
-        "key_success": "Key successfully activated! You have been granted permanent VIP status.",
-        "key_invalid": "Invalid or already used key.",
-        "access_denied": "Access restricted.\nActivate VIP access using /key YOUR_KEY.",
-        "music_ask": "Enter track title or artist:",
-        "music_downloading": "Searching and downloading track: {query}...",
-        "music_uploading": "Uploading audio file to chat...",
-        "music_caption": "Track: {title}\n\nForward this audio to the bot to add it to your playlist!",
-        "music_not_found": "Error downloading file.",
-        "music_error": "Failed to download track {query}.\nError: {error}",
-        "audio_already_in_playlist": "Track {title} is already in your playlist!",
-        "audio_added": "Track {title} added to your playlist!",
-        "playlist_empty": "Your playlist is currently empty.\n\nHow to add? Forward any audio from chat to the bot!",
-        "playlist_title": "Your playlist (Total: {count} tracks):\nClick on the title to play:",
-        "track_deleted": "Track {title} deleted from playlist.",
-        "settings_title": "Profile Settings\n\nYour Telegram ID: {id}\nName: {name}\nLanguage: {lang}\nStatus: {status}",
+        "key_success": "Key activated!",
+        "key_invalid": "Invalid key.",
+        "access_denied": "🔒 Access restricted!\nNo active subscription or trial.",
+        "trial_activated": "🎉 Trial activated!",
+        "trial_already_used": "⚠️ Already used.",
+        "music_ask": "Enter track:",
+        "music_downloading": "Downloading...",
+        "music_uploading": "Uploading...",
+        "music_caption": "Track: {title}",
+        "music_not_found": "Not found.",
+        "music_error": "Error.",
+        "audio_already_in_playlist": "Already in playlist!",
+        "audio_added": "Added!",
+        "playlist_empty": "Empty playlist.",
+        "playlist_title": "Playlist:",
+        "track_deleted": "Deleted.",
+        "settings_title": "Settings\nID: {id}\nName: {name}\nStatus: {status}",
         "btn_change_name": "Change Name",
         "btn_change_lang": "Change Language",
-        "enter_new_name": "Enter your new name:",
-        "name_updated": "Name successfully updated: {name}!",
-        "lang_updated": "Language successfully changed to English!",
+        "enter_new_name": "New name:",
+        "name_updated": "Updated!",
+        "lang_updated": "Language changed!",
         "ai_thinking": "AI is thinking...",
-        "ai_no_key": "AI module is not configured.",
-        "ai_error": "Error generating AI response."
+        "ai_no_key": "AI not configured.",
+        "ai_error": "Error."
     }
 }
 
@@ -199,8 +207,29 @@ user_profiles = {}
 active_keys = INITIAL_KEYS
 
 
+def restore_database_from_channel():
+    if not Storage_chat_id:
+        return
+    try:
+        chat_messages = bot.get_chat_history(Storage_chat_id, limit=20)
+        for msg in chat_messages:
+            if msg.document and msg.document.file_name == PROFILES_FILE:
+                file_info = bot.get_file(msg.document.file_id)
+                downloaded_file = bot.download_file(file_info.file_path)
+                with open(PROFILES_FILE, 'wb') as f:
+                    f.write(downloaded_file)
+                logging.info("База данных успешно восстановлена из архива!")
+                break
+    except Exception as e:
+        logging.warning(f"Не удалось восстановить базу из канала: {e}")
+
+
 def load_data():
     global user_profiles, active_keys
+
+    if not os.path.exists(PROFILES_FILE) and Storage_chat_id:
+        restore_database_from_channel()
+
     if os.path.exists(PROFILES_FILE):
         try:
             with open(PROFILES_FILE, 'r', encoding='utf-8') as f:
@@ -226,12 +255,12 @@ def save_data():
         with open(KEYS_FILE, 'w', encoding='utf-8') as f:
             json.dump(active_keys, f, ensure_ascii=False, indent=4)
 
-        if BACKUP_CHANNEL_ID:
+        if Storage_chat_id:
             with open(PROFILES_FILE, 'rb') as f:
                 bot.send_document(
-                    BACKUP_CHANNEL_ID,
+                    Storage_chat_id,
                     f,
-                    caption=f"DB Backup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    caption=f"📦 DB Backup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
     except Exception as e:
         logging.error(f"Ошибка сохранения бэкапа: {e}")
@@ -240,13 +269,13 @@ def save_data():
 def get_or_create_profile(user):
     user_id = str(user.id)
     if user_id not in user_profiles:
-        trial_until = (datetime.now() + timedelta(days=7)).isoformat()
         user_profiles[user_id] = {
             "name": None,
             "username": user.username,
             "lang": "ru",
-            "status": "free",
-            "trial_until": trial_until,
+            "status": "trial",
+            "trial_until": None,
+            "trial_used": False,
             "playlist": []
         }
         save_data()
@@ -261,8 +290,12 @@ def get_txt(user_id, key, **kwargs):
     return text.format(**kwargs) if kwargs else text
 
 
+def is_admin(user_id):
+    return user_id in ADMIN_IDS or str(user_id) in [str(a) for a in ADMIN_IDS]
+
+
 def check_access(user_id):
-    if user_id in ADMIN_IDS or str(user_id) in [str(a) for a in ADMIN_IDS]:
+    if is_admin(user_id):
         return True
 
     profile = user_profiles.get(str(user_id))
@@ -282,6 +315,17 @@ def check_access(user_id):
             pass
 
     return False
+
+
+def get_status_string(user_id, profile):
+    if is_admin(user_id):
+        return "Администратор"
+    elif profile.get("status") in ["vip", "pro"]:
+        return "VIP"
+    elif check_access(user_id):
+        return "TRIAL"
+    else:
+        return "Неактивен / Истек"
 
 
 # ---------------------------------------------------------
@@ -307,6 +351,25 @@ def get_lang_inline_keyboard():
     return markup
 
 
+def send_access_denied(chat_id, user_id):
+    profile = get_or_create_profile(
+        bot.get_chat_member(chat_id, user_id).user if hasattr(bot, 'get_chat_member') else types.User(id=user_id,
+                                                                                                      is_bot=False,
+                                                                                                      first_name=""))
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    if not profile.get("trial_used", False):
+        markup.add(types.InlineKeyboardButton("🎁 Активировать пробный период (7 дней)", callback_data="activate_trial"))
+
+    markup.add(types.InlineKeyboardButton("⭐ Купить VIP навсегда (750 ⭐)", callback_data="buy_vip_inline"))
+
+    bot.send_message(
+        chat_id,
+        get_txt(user_id, "access_denied") + "\n\nВыберите вариант продолжения:",
+        reply_markup=markup
+    )
+
+
 # ---------------------------------------------------------
 # MAIN ROUTING & START HANDLERS
 # ---------------------------------------------------------
@@ -327,13 +390,16 @@ def process_set_name_initial(message):
     save_data()
 
     bot.send_message(message.chat.id, get_txt(message.from_user.id, "name_set", name=new_name))
-    show_main_menu(message.chat.id, profile, message.from_user.id)
+
+    # Проверяем доступ: если есть VIP/Админ/Триал — пускаем в меню, иначе кидаем на оплату/триал
+    if check_access(message.from_user.id):
+        show_main_menu(message.chat.id, profile, message.from_user.id)
+    else:
+        send_access_denied(message.chat.id, message.from_user.id)
 
 
 def show_main_menu(chat_id, profile, user_id):
-    has_access = check_access(user_id)
-    status_str = "VIP" if profile.get("status") in ["vip", "pro"] else ("TRIAL" if has_access else "EXPIRED")
-
+    status_str = get_status_string(user_id, profile)
     text = get_txt(user_id, "main_menu", name=profile.get('name', 'User'), status=status_str)
     bot.send_message(chat_id, text, reply_markup=get_main_keyboard(user_id))
 
@@ -352,8 +418,51 @@ def redeem_key(message):
         profile["status"] = "vip"
         save_data()
         bot.reply_to(message, get_txt(message.from_user.id, "key_success"))
+        show_main_menu(message.chat.id, profile, message.from_user.id)
     else:
         bot.reply_to(message, get_txt(message.from_user.id, "key_invalid"))
+
+
+# ---------------------------------------------------------
+# ОПЛАТА ЧЕРЕЗ TELEGRAM STARS (750 ЗВЕЗД)
+# ---------------------------------------------------------
+@bot.message_handler(commands=['buy_vip'])
+def cmd_buy_vip(message):
+    chat_id = message.chat.id
+    prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=750)]
+
+    bot.send_invoice(
+        chat_id=chat_id,
+        title="VIP Статус в боте",
+        description="Вечный доступ к поиску музыки и нейросети без ограничений.",
+        invoice_payload="vip_permanent_access",
+        provider_token="",
+        currency="XTR",
+        prices=prices,
+        start_parameter="get_vip"
+    )
+
+
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def checkout(pre_checkout_query):
+    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+
+@bot.message_handler(content_types=['successful_payment'])
+def got_payment(message):
+    user_id = message.from_user.id
+    payment_info = message.successful_payment
+
+    if payment_info.invoice_payload == "vip_permanent_access":
+        profile = get_or_create_profile(message.from_user)
+        profile["status"] = "vip"
+        save_data()
+
+        bot.send_message(
+            message.chat.id,
+            "🎉 Спасибо за оплату! Ваш вечный VIP-статус успешно активирован."
+        )
+        show_main_menu(message.chat.id, profile, user_id)
 
 
 # ---------------------------------------------------------
@@ -432,6 +541,7 @@ def execute_music_search(chat_id, user_id, query):
 def handle_incoming_audio(message):
     user_id = message.from_user.id
     if not check_access(user_id):
+        send_access_denied(message.chat.id, user_id)
         return
 
     profile = get_or_create_profile(message.from_user)
@@ -466,23 +576,27 @@ def handle_all_messages(message):
         return
 
     if not check_access(user_id):
-        bot.reply_to(message, get_txt(user_id, "access_denied"))
+        send_access_denied(message.chat.id, user_id)
         return
 
     profile = get_or_create_profile(message.from_user)
 
-    # Проверка нажатий кнопок на разных языках
-    if text in [TRANSLATIONS[l]["btn_music"] for l in TRANSLATIONS]:
+    music_buttons = [TRANSLATIONS[l]["btn_music"] for l in TRANSLATIONS]
+    ai_buttons = [TRANSLATIONS[l]["btn_ai"] for l in TRANSLATIONS]
+    playlist_buttons = [TRANSLATIONS[l]["btn_playlist"] for l in TRANSLATIONS]
+    settings_buttons = [TRANSLATIONS[l]["btn_settings"] for l in TRANSLATIONS]
+
+    if text in music_buttons:
         msg = bot.send_message(message.chat.id, get_txt(user_id, "music_ask"))
         bot.register_next_step_handler(msg, lambda m: execute_music_search(m.chat.id, m.from_user.id, m.text))
         return
 
-    elif text in [TRANSLATIONS[l]["btn_ai"] for l in TRANSLATIONS]:
+    elif text in ai_buttons:
         msg = bot.send_message(message.chat.id, "...")
         bot.register_next_step_handler(msg, lambda m: handle_ai_chat(m.chat.id, m.from_user.id, m.text))
         return
 
-    elif text in [TRANSLATIONS[l]["btn_playlist"] for l in TRANSLATIONS]:
+    elif text in playlist_buttons:
         playlist = profile.get("playlist", [])
         if not playlist:
             bot.send_message(message.chat.id, get_txt(user_id, "playlist_empty"))
@@ -501,14 +615,14 @@ def handle_all_messages(message):
         )
         return
 
-    elif text in [TRANSLATIONS[l]["btn_settings"] for l in TRANSLATIONS]:
+    elif text in settings_buttons:
         markup = types.InlineKeyboardMarkup()
         markup.add(
             types.InlineKeyboardButton(get_txt(user_id, "btn_change_name"), callback_data="change_name"),
             types.InlineKeyboardButton(get_txt(user_id, "btn_change_lang"), callback_data="change_lang")
         )
 
-        status_str = "VIP" if profile.get("status") in ["vip", "pro"] else profile.get("status").upper()
+        status_str = get_status_string(user_id, profile)
         lang_names = {"ru": "Русский", "uk": "Українська", "de": "Deutsch", "en": "English"}
 
         bot.send_message(
@@ -545,11 +659,14 @@ def handle_callbacks(call):
             msg = bot.send_message(call.message.chat.id, get_txt(user_id, "ask_name"))
             bot.register_next_step_handler(msg, process_set_name_initial)
         else:
-            bot.send_message(
-                call.message.chat.id,
-                get_txt(user_id, "lang_updated"),
-                reply_markup=get_main_keyboard(user_id)
-            )
+            if check_access(user_id):
+                bot.send_message(
+                    call.message.chat.id,
+                    get_txt(user_id, "lang_updated"),
+                    reply_markup=get_main_keyboard(user_id)
+                )
+            else:
+                send_access_denied(call.message.chat.id, user_id)
         bot.answer_callback_query(call.id)
 
     elif call.data == "change_lang":
@@ -561,7 +678,37 @@ def handle_callbacks(call):
         bot.register_next_step_handler(msg, process_change_name)
         bot.answer_callback_query(call.id)
 
+    elif call.data == "activate_trial":
+        if profile.get("trial_used", False):
+            bot.answer_callback_query(call.id, "⚠️ Вы уже использовали пробный период ранее.", show_alert=True)
+            return
+
+        profile["trial_until"] = (datetime.now() + timedelta(days=7)).isoformat()
+        profile["trial_used"] = True
+        save_data()
+
+        bot.answer_callback_query(call.id, "🎉 Пробный период успешно активирован на 7 дней!")
+        bot.send_message(call.message.chat.id, "🎉 Пробный период на 7 дней успешно активирован! Добро пожаловать.")
+        show_main_menu(call.message.chat.id, profile, user_id)
+
+    elif call.data == "buy_vip_inline":
+        bot.answer_callback_query(call.id)
+        prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=750)]
+        bot.send_invoice(
+            chat_id=call.message.chat.id,
+            title="VIP Статус в боте",
+            description="Вечный доступ к поиску музыки и нейросети без ограничений.",
+            invoice_payload="vip_permanent_access",
+            provider_token="",
+            currency="XTR",
+            prices=prices,
+            start_parameter="get_vip"
+        )
+
     elif call.data.startswith("play_"):
+        if not check_access(user_id):
+            bot.answer_callback_query(call.id, "🔒 Доступ ограничен", show_alert=True)
+            return
         idx = int(call.data.split("_")[1])
         playlist = profile.get("playlist", [])
         if 0 <= idx < len(playlist):
@@ -570,6 +717,9 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
 
     elif call.data.startswith("del_"):
+        if not check_access(user_id):
+            bot.answer_callback_query(call.id, "🔒 Доступ ограничен", show_alert=True)
+            return
         idx = int(call.data.split("_")[1])
         playlist = profile.get("playlist", [])
         if 0 <= idx < len(playlist):
@@ -589,9 +739,13 @@ def process_change_name(message):
 
 
 # ---------------------------------------------------------
-# AI LOGIC WITH LANGUAGE INSTRUCTION
+# AI LOGIC
 # ---------------------------------------------------------
 def handle_ai_chat(chat_id, user_id, prompt):
+    if not check_access(user_id):
+        send_access_denied(chat_id, user_id)
+        return
+
     if not groq_client:
         bot.send_message(chat_id, get_txt(user_id, "ai_no_key"))
         return
