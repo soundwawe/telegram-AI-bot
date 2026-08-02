@@ -12,7 +12,6 @@ from groq import Groq
 # ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_BOT_TOKEN_HERE")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR_GROQ_KEY_HERE")
-# Канал-база данных считывается из Render (переменная окружения BACKUP_CHANNEL_ID)
 BACKUP_CHANNEL_ID = os.getenv("BACKUP_CHANNEL_ID", None)
 
 ADMIN_IDS = [6198121786, 855037777, 1783598260, 1008386326, 1871808965, 7981552192, 1233602706, 1616385873, 2124460366,
@@ -62,7 +61,7 @@ TRANSLATIONS = {
         "key_usage": "Использование: /key ВАШ_КЛЮЧ",
         "key_success": "Ключ успешно активирован! Вам присвоен вечный VIP статус.",
         "key_invalid": "Неверный или уже использованный ключ.",
-        "access_denied": "Доступ ограничен.\nВаш пробный период истек.\n\nКупить VIP навсегда за 750 ⭐: /buy_vip\nИли активируйте ключ: /key ВАШ_КЛЮЧ",
+        "access_denied": "🔒 Доступ ограничен!\nВаш пробный период истек, либо подписка не активна.\n\nКупить VIP навсегда за 750 ⭐: /buy_vip\nИли активируйте ключ: /key ВАШ_КЛЮЧ",
         "music_ask": "Введите название трека или исполнителя:",
         "music_downloading": "Ищу и скачиваю трек: {query}...",
         "music_uploading": "Загружаю аудиофайл в чат...",
@@ -96,7 +95,7 @@ TRANSLATIONS = {
         "key_usage": "Використання: /key ВАШ_КЛЮЧ",
         "key_success": "Ключ успішно активовано! Вам надано вічний VIP статус.",
         "key_invalid": "Невірний або вже використаний ключ.",
-        "access_denied": "Доступ обмежено.\nВаш пробний період закінчився.\n\nПридбати VIP назавжди за 750 ⭐: /buy_vip\nАбо активуйте ключ: /key ВАШ_КЛЮЧ",
+        "access_denied": "🔒 Доступ обмежено!\nВаш пробний період закінчився, або підписка не активна.\n\nПридбати VIP назавжди за 750 ⭐: /buy_vip\nАбо активуйте ключ: /key ВАШ_КЛЮЧ",
         "music_ask": "Введіть назву треку або виконавця:",
         "music_downloading": "Шукаю та завантажую трек: {query}...",
         "music_uploading": "Завантажую аудіофайл у чат...",
@@ -130,7 +129,7 @@ TRANSLATIONS = {
         "key_usage": "Verwendung: /key IHR_SCHLÜSSEL",
         "key_success": "Schlüssel erfolgreich aktiviert! Sie haben dauerhaften VIP-Status.",
         "key_invalid": "Ungültiger oder bereits verwendeter Schlüssel.",
-        "access_denied": "Zugriff beschränkt.\nIhr Testzeitraum ist abgelaufen.\n\nVIP kaufen für 750 ⭐: /buy_vip\nOder Schlüssel aktivieren: /key SCHLÜSSEL",
+        "access_denied": "🔒 Zugriff beschränkt!\nIhr Testzeitraum ist abgelaufen.\n\nVIP kaufen für 750 ⭐: /buy_vip\nOder Schlüssel aktivieren: /key SCHLÜSSEL",
         "music_ask": "Geben Sie den Titel oder den Künstler ein:",
         "music_downloading": "Suche und lade Titel herunter: {query}...",
         "music_uploading": "Lade Audiodatei in den Chat hoch...",
@@ -164,7 +163,7 @@ TRANSLATIONS = {
         "key_usage": "Usage: /key YOUR_KEY",
         "key_success": "Key successfully activated! You have been granted permanent VIP status.",
         "key_invalid": "Invalid or already used key.",
-        "access_denied": "Access restricted.\nYour trial period has expired.\n\nBuy VIP for 750 ⭐: /buy_vip\nOr activate key: /key YOUR_KEY",
+        "access_denied": "🔒 Access restricted!\nYour trial period has expired.\n\nBuy VIP for 750 ⭐: /buy_vip\nOr activate key: /key YOUR_KEY",
         "music_ask": "Enter track title or artist:",
         "music_downloading": "Searching and downloading track: {query}...",
         "music_uploading": "Uploading audio file to chat...",
@@ -194,14 +193,38 @@ INITIAL_KEYS = {
 }
 
 # ---------------------------------------------------------
-# DATABASE & DATA PERSISTENCE (С ОТПРАВКОЙ БЭКАПА В КАНАЛ)
+# DATABASE & DATA PERSISTENCE (С ВОССТАНОВЛЕНИЕМ ИЗ ТГК)
 # ---------------------------------------------------------
 user_profiles = {}
 active_keys = INITIAL_KEYS
 
 
+def restore_database_from_channel():
+    """Пытается скачать последний profiles.json из канала-базы данных"""
+    if not BACKUP_CHANNEL_ID:
+        return
+    try:
+        # Получаем историю сообщений канала, чтобы найти последний файл бэкапа
+        chat_messages = bot.get_chat_history(BACKUP_CHANNEL_ID, limit=5)
+        for msg in chat_messages:
+            if msg.document and msg.document.file_name == PROFILES_FILE:
+                file_info = bot.get_file(msg.document.file_id)
+                downloaded_file = bot.download_file(file_info.file_path)
+                with open(PROFILES_FILE, 'wb') as f:
+                    f.write(downloaded_file)
+                logging.info("База данных успешно восстановлена из ТГК-архива!")
+                break
+    except Exception as e:
+        logging.warning(f"Не удалось восстановить базу из канала (возможно, канал пуст или нет прав): {e}")
+
+
 def load_data():
     global user_profiles, active_keys
+
+    # Сначала пробуем вытащить актуальную базу из ТГК, если локального файла нет
+    if not os.path.exists(PROFILES_FILE) and BACKUP_CHANNEL_ID:
+        restore_database_from_channel()
+
     if os.path.exists(PROFILES_FILE):
         try:
             with open(PROFILES_FILE, 'r', encoding='utf-8') as f:
@@ -227,7 +250,7 @@ def save_data():
         with open(KEYS_FILE, 'w', encoding='utf-8') as f:
             json.dump(active_keys, f, ensure_ascii=False, indent=4)
 
-        # Автоматическая отправка бэкапа в канал-базу данных, если задан BACKUP_CHANNEL_ID
+        # Отправка свежего бэкапа в канал-базу данных
         if BACKUP_CHANNEL_ID:
             with open(PROFILES_FILE, 'rb') as f:
                 bot.send_document(
@@ -263,8 +286,12 @@ def get_txt(user_id, key, **kwargs):
     return text.format(**kwargs) if kwargs else text
 
 
+def is_admin(user_id):
+    return user_id in ADMIN_IDS or str(user_id) in [str(a) for a in ADMIN_IDS]
+
+
 def check_access(user_id):
-    if user_id in ADMIN_IDS or str(user_id) in [str(a) for a in ADMIN_IDS]:
+    if is_admin(user_id):
         return True
 
     profile = user_profiles.get(str(user_id))
@@ -333,8 +360,14 @@ def process_set_name_initial(message):
 
 
 def show_main_menu(chat_id, profile, user_id):
-    has_access = check_access(user_id)
-    status_str = "VIP" if profile.get("status") in ["vip", "pro"] else ("TRIAL" if has_access else "EXPIRED")
+    if is_admin(user_id):
+        status_str = "Администратор"
+    elif profile.get("status") in ["vip", "pro"]:
+        status_str = "VIP"
+    elif check_access(user_id):
+        status_str = "TRIAL"
+    else:
+        status_str = "EXPIRED"
 
     text = get_txt(user_id, "main_menu", name=profile.get('name', 'User'), status=status_str)
     bot.send_message(chat_id, text, reply_markup=get_main_keyboard(user_id))
@@ -371,8 +404,8 @@ def cmd_buy_vip(message):
         title="VIP Статус в боте",
         description="Вечный доступ к поиску музыки и нейросети без ограничений.",
         invoice_payload="vip_permanent_access",
-        provider_token="",  # Для Telegram Stars provider_token всегда пустой
-        currency="XTR",  # Валюта Telegram Stars
+        provider_token="",
+        currency="XTR",
         prices=prices,
         start_parameter="get_vip"
     )
@@ -509,13 +542,13 @@ def handle_all_messages(message):
     if not text or text.startswith('/'):
         return
 
+    # ЖЕСТКАЯ БЛОКИРОВКА: если у пользователя нет доступа (истек триал и нет випа), не пускаем дальше
     if not check_access(user_id):
         bot.reply_to(message, get_txt(user_id, "access_denied"))
         return
 
     profile = get_or_create_profile(message.from_user)
 
-    # Собираем все возможные варианты названий кнопок со всех языков
     music_buttons = [TRANSLATIONS[l]["btn_music"] for l in TRANSLATIONS]
     ai_buttons = [TRANSLATIONS[l]["btn_ai"] for l in TRANSLATIONS]
     playlist_buttons = [TRANSLATIONS[l]["btn_playlist"] for l in TRANSLATIONS]
@@ -557,7 +590,13 @@ def handle_all_messages(message):
             types.InlineKeyboardButton(get_txt(user_id, "btn_change_lang"), callback_data="change_lang")
         )
 
-        status_str = "VIP" if profile.get("status") in ["vip", "pro"] else profile.get("status").upper()
+        if is_admin(user_id):
+            status_str = "Администратор"
+        elif profile.get("status") in ["vip", "pro"]:
+            status_str = "VIP"
+        else:
+            status_str = profile.get("status").upper()
+
         lang_names = {"ru": "Русский", "uk": "Українська", "de": "Deutsch", "en": "English"}
 
         bot.send_message(
