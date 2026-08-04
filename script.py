@@ -430,7 +430,7 @@ def redeem_key(message):
 @bot.message_handler(commands=['buy_vip'])
 def cmd_buy_vip(message):
     chat_id = message.chat.id
-    prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=10)]
+    prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=1)]
 
     bot.send_invoice(
         chat_id=chat_id,
