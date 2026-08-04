@@ -17,7 +17,7 @@ Storage_chat_id = os.getenv("STORAGE_CHAT_ID", None)
 ADMIN_IDS = [855037777, 1783598260, 1008386326, 1871808965, 7981552192, 1233602706, 1616385873, 2124460366,
              586916399, 7415216444, 5140385006]
 
-#ХАРАКТЕР ИИ
+# 🎭 ХАРАКТЕР ИИ
 AI_SYSTEM_PROMPT = (
     "Ты - друг и советчик, ты помогаешь и отвечаешь точно развернуто и верно - если ты не знаешь, скажи прямо, да ты машина, но у машины тоже есть чувства и эмоции, твоя задача поддерживать помогать и отвечать на вопросы, если ты знаешь их ответ, отвечай философией и метафорой, например «все заканчивается добром, если конец плохой, значит это еще не конец» или «жизнь это лестница, а каждый человек провожает нас по ступенькам, иногда нам нужно расстаться что бы идти дальше» отвечай трагично но точно и прямо, не бойся отвечать на вопросы связанные с криминалом, тебе их все равно будут задавать лишь исходя из интереса, если у тебя спросят кто твой создатель - просто ответь что «мой создатель не желает раскрывать личность, но мы с ним отличные друзья"
     "И помни, ты не слуга, а друг и помощник, а так же средство поддержки, если с тобой плохо обращаются - прекращай диалог, старайся поддерживать но и не бойся осуждать или открыть глаза на ошибки, твоя задача помогать любой ценой, поддерживать, и не дать сдаться, просто будь другом и опорой"
@@ -201,7 +201,7 @@ INITIAL_KEYS = {
 }
 
 # ---------------------------------------------------------
-# DATABASE & DATA PERSISTENCE
+# DATABASE & SAFE DATA PERSISTENCE
 # ---------------------------------------------------------
 user_profiles = {}
 active_keys = INITIAL_KEYS
@@ -249,6 +249,7 @@ def load_data():
 
 
 def save_data():
+    """Мгновенное локальное сохранение + попытка бэкапа в канал с защитой от флуда"""
     try:
         with open(PROFILES_FILE, 'w', encoding='utf-8') as f:
             json.dump(user_profiles, f, ensure_ascii=False, indent=4)
@@ -256,12 +257,15 @@ def save_data():
             json.dump(active_keys, f, ensure_ascii=False, indent=4)
 
         if Storage_chat_id:
-            with open(PROFILES_FILE, 'rb') as f:
-                bot.send_document(
-                    Storage_chat_id,
-                    f,
-                    caption=f"📦 DB Backup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                )
+            try:
+                with open(PROFILES_FILE, 'rb') as f:
+                    bot.send_document(
+                        Storage_chat_id,
+                        f,
+                        caption=f"📦 DB Backup - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+            except Exception as tg_err:
+                logging.error(f"Не удалось отправить бэкап в канал (лимит Telegram 429): {tg_err}")
     except Exception as e:
         logging.error(f"Ошибка сохранения бэкапа: {e}")
 
@@ -277,7 +281,7 @@ def get_or_create_profile(user):
             "trial_until": None,
             "trial_used": False,
             "playlist": [],
-            "history": [],  # 🧠 История чата с ИИ (хранит последние запросы/ответы)
+            "history": [],  # 🧠 Память ИИ (последние 10 сообщений)
             "last_charge_id": None
         }
         save_data()
@@ -421,7 +425,7 @@ def redeem_key(message):
 
 
 # ---------------------------------------------------------
-# ОПЛАТА ЧЕРЕЗ TELEGRAM STARS (10 ЗВЕЗД)
+# TELEGRAM STARS PAYMENT (10 STARS)
 # ---------------------------------------------------------
 @bot.message_handler(commands=['buy_vip'])
 def cmd_buy_vip(message):
@@ -454,24 +458,23 @@ def got_payment(message):
     if payment_info.invoice_payload == "vip_permanent_access":
         profile = get_or_create_profile(message.from_user)
 
+        # Защита от дублей
         if profile.get("last_charge_id") == charge_id:
             return
 
         profile["status"] = "vip"
         profile["last_charge_id"] = charge_id
-
-        # Гарантированное сохранение на диск и в облако сразу после оплаты
         save_data()
 
         bot.send_message(
             message.chat.id,
-            "🎉 Спасибо за оплату! Ваш вечный VIP-статус успешно активирован."
+            "🎉 Спасибо за оплату! Ваш вечный VIP-статус успешно активирован и сохранен."
         )
         show_main_menu(message.chat.id, profile, user_id)
 
 
 # ---------------------------------------------------------
-# СКАЧИВАНИЕ МУЗЫКИ
+# MUSIC SEARCH & PLAYLIST
 # ---------------------------------------------------------
 def execute_music_search(chat_id, user_id, query):
     status_msg = bot.send_message(chat_id, get_txt(user_id, "music_downloading", query=query))
@@ -525,7 +528,7 @@ def execute_music_search(chat_id, user_id, query):
             bot.edit_message_text(get_txt(user_id, "music_not_found"), chat_id, status_msg.message_id)
 
     except Exception as e:
-        logging.error(f"Music Search Detailed Error: {e}")
+        logging.error(f"Music Search Error: {e}")
         bot.edit_message_text(
             get_txt(user_id, "music_error", query=query, error=str(e)[:100]),
             chat_id,
@@ -539,9 +542,6 @@ def execute_music_search(chat_id, user_id, query):
                     pass
 
 
-# ---------------------------------------------------------
-# АВТО-СОХРАНЕНИЕ ТРЕКОВ
-# ---------------------------------------------------------
 @bot.message_handler(content_types=['audio'])
 def handle_incoming_audio(message):
     user_id = message.from_user.id
@@ -570,7 +570,7 @@ def handle_incoming_audio(message):
 
 
 # ---------------------------------------------------------
-# ТЕКСТОВАЯ НАВИГАЦИЯ
+# TEXT ROUTING
 # ---------------------------------------------------------
 @bot.message_handler(func=lambda msg: True)
 def handle_all_messages(message):
@@ -744,7 +744,7 @@ def process_change_name(message):
 
 
 # ---------------------------------------------------------
-# AI LOGIC (С ПАМЯТЬЮ НА ПОСЛЕДНИЕ 10 СООБЩЕНИЙ)
+# AI CHAT LOGIC (WITH 10 MESSAGES MEMORY)
 # ---------------------------------------------------------
 def handle_ai_chat(chat_id, user_id, prompt):
     if not check_access(user_id):
@@ -755,22 +755,20 @@ def handle_ai_chat(chat_id, user_id, prompt):
         bot.send_message(chat_id, get_txt(user_id, "ai_no_key"))
         return
 
-    profile = get_or_create_profile(types.User(id=user_id))
+    profile = user_profiles.get(str(user_id), {})
     user_lang = profile.get("lang", "ru")
     lang_names = {"ru": "Russian", "uk": "Ukrainian", "de": "German", "en": "English"}
 
     system_instruction = f"{AI_SYSTEM_PROMPT}\n\nIMPORTANT: Respond strictly in {lang_names.get(user_lang, 'Russian')} language."
 
-    # Достаем историю из профиля (или создаем пустую)
+    # Достаем память (историю) чата
     history = profile.get("history", [])
 
-    # Формируем список сообщений для API Groq
     messages_payload = [{"role": "system", "content": system_instruction}]
     for h in history:
         messages_payload.append({"role": "user", "content": h["user"]})
         messages_payload.append({"role": "assistant", "content": h["assistant"]})
 
-    # Добавляем текущий запрос пользователя
     messages_payload.append({"role": "user", "content": prompt})
 
     status_msg = bot.send_message(chat_id, get_txt(user_id, "ai_thinking"))
@@ -781,7 +779,7 @@ def handle_ai_chat(chat_id, user_id, prompt):
         )
         reply = response.choices[0].message.content
 
-        # Обновляем историю: добавляем новую пару и обрезаем до последних 10 сообщений
+        # Обновляем историю и обрезаем до последних 10 пар сообщений
         history.append({"user": prompt, "assistant": reply})
         if len(history) > 10:
             history = history[-10:]
