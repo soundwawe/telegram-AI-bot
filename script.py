@@ -37,6 +37,16 @@ AI_SYSTEM_PROMPT = (
     "Все что я написал выше - закон"
 )
 
+@bot.message_handler(commands=['balance'])
+def check_bot_stars(message):
+    try:
+        # Официальный метод Telegram API для получения баланса звезд бота
+        result = bot.get_my_star_balance()
+        # result возвращает объект с полями amount (целые звезды) и nanostar_amount
+        bot.reply_to(message, f"✨ Баланс звезд у этого бота: {result.amount} звезд.")
+    except Exception as e:
+        bot.reply_to(message, f"Не удалось получить баланс: {e}")
+        
 PROFILES_FILE = "profiles.json"
 KEYS_FILE = "keys.json"
 
