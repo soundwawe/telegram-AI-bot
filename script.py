@@ -75,7 +75,7 @@ TRANSLATIONS = {
         "playlist_empty": "Ваш плейлист пока пуст.\n\nКак пополнить? Перешлите боту любое аудио из чата!",
         "playlist_title": "Ваш плейлист (Всего: {count} треков):\nНажмите на название для воспроизведения:",
         "track_deleted": "Трек {title} удален из плейлиста.",
-        "settings_title": "Настройки профиля\n\nВаш Telegram ID: {id}\nИмя: {name}\nЯзык: {lang}\nСтатус: {status}\n\nКупить VIP (10 ⭐): /buy_vip",
+        "settings_title": "Настройки профиля\n\nВаш Telegram ID: {id}\nИмя: {name}\nЯзык: {lang}\nСтатус: {status}\n\nКупить VIP (1 ⭐): /buy_vip",
         "btn_change_name": "Изменить имя",
         "btn_change_lang": "Изменить язык",
         "enter_new_name": "Введите новое имя, по которому к вам обращаться:",
@@ -111,7 +111,7 @@ TRANSLATIONS = {
         "playlist_empty": "Ваш плейліст поки порожній.\n\nЯк поповнити? Перешліть боту будь-яке аудіо з чату!",
         "playlist_title": "Ваш плейліст (Усього: {count} треків):\nНатисніть на назву для відтворення:",
         "track_deleted": "Трек {title} видалено з плейліста.",
-        "settings_title": "Налаштування профілю\n\nВаш Telegram ID: {id}\nИм'я: {name}\nМова: {lang}\nСтатус: {status}\n\nПридбати VIP (10 ⭐): /buy_vip",
+        "settings_title": "Налаштування профілю\n\nВаш Telegram ID: {id}\nИм'я: {name}\nМова: {lang}\nСтатус: {status}\n\nПридбати VIP (1 ⭐): /buy_vip",
         "btn_change_name": "Змінити ім'я",
         "btn_change_lang": "Змінити мову",
         "enter_new_name": "Введіть нове ім'я, за яким до вас звертатися:",
@@ -363,7 +363,7 @@ def send_access_denied(chat_id, user_id):
     if not profile.get("trial_used", False):
         markup.add(types.InlineKeyboardButton("🎁 Активировать пробный период (7 дней)", callback_data="activate_trial"))
 
-    markup.add(types.InlineKeyboardButton("⭐ Купить VIP навсегда (10 ⭐)", callback_data="buy_vip_inline"))
+    markup.add(types.InlineKeyboardButton("⭐ Купить VIP навсегда (1 ⭐)", callback_data="buy_vip_inline"))
 
     bot.send_message(
         chat_id,
@@ -419,18 +419,18 @@ def redeem_key(message):
         profile["status"] = "vip"
         save_data()
         bot.reply_to(message, get_txt(message.from_user.id, "key_success"))
-        show_main_menu(message.chat.id, profile, message.from_user.id)
+        show_main_menu(message.chat.id, profile, user_id)
     else:
         bot.reply_to(message, get_txt(message.from_user.id, "key_invalid"))
 
 
 # ---------------------------------------------------------
-# TELEGRAM STARS PAYMENT (10 STARS)
+# TELEGRAM STARS PAYMENT (1 STAR)
 # ---------------------------------------------------------
 @bot.message_handler(commands=['buy_vip'])
 def cmd_buy_vip(message):
     chat_id = message.chat.id
-    prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=1)]
+    prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=1)]  # Установлена 1 звезда
 
     bot.send_invoice(
         chat_id=chat_id,
@@ -698,7 +698,7 @@ def handle_callbacks(call):
 
     elif call.data == "buy_vip_inline":
         bot.answer_callback_query(call.id)
-        prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=10)]
+        prices = [types.LabeledPrice(label="VIP Статус (Навсегда)", amount=1)]  # Установлена 1 звезда
         bot.send_invoice(
             chat_id=call.message.chat.id,
             title="VIP Статус в боте",
