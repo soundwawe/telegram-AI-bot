@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_BOT_TOKEN_HERE")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR_GROQ_KEY_HERE")
 Storage_chat_id = os.getenv("STORAGE_CHAT_ID", None)
 
-ADMIN_IDS = [855037777, 1783598260, 1008386326, 1871808965, 7981552192, 1233602706, 1616385873, 2124460366,
+ADMIN_IDS = [6198121786, 855037777, 1783598260, 1008386326, 1871808965, 7981552192, 1233602706, 1616385873, 2124460366,
              586916399, 7415216444, 5140385006]
 
 # 🎭 ХАРАКТЕР ИИ
@@ -207,28 +207,8 @@ user_profiles = {}
 active_keys = INITIAL_KEYS
 
 
-def restore_database_from_channel():
-    if not Storage_chat_id:
-        return
-    try:
-        chat_messages = bot.get_chat_history(Storage_chat_id, limit=20)
-        for msg in chat_messages:
-            if msg.document and msg.document.file_name == PROFILES_FILE:
-                file_info = bot.get_file(msg.document.file_id)
-                downloaded_file = bot.download_file(file_info.file_path)
-                with open(PROFILES_FILE, 'wb') as f:
-                    f.write(downloaded_file)
-                logging.info("База данных успешно восстановлена из архива!")
-                break
-    except Exception as e:
-        logging.warning(f"Не удалось восстановить базу из канала: {e}")
-
-
 def load_data():
     global user_profiles, active_keys
-
-    if not os.path.exists(PROFILES_FILE) and Storage_chat_id:
-        restore_database_from_channel()
 
     if os.path.exists(PROFILES_FILE):
         try:
